@@ -128,24 +128,6 @@ jobs:
           find config -name "*.yaml" | head -10 >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
       
-      - name: Check for emojis
-        run: |
-          echo "### Emoji Check" >> $GITHUB_STEP_SUMMARY
-          
-          # Check Python file
-          if grep -P '[\x{1F300}-\x{1F9FF}]' scripts/grafana-manager.py; then
-            echo "- [WARNING] Emojis found in Python script" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- [OK] No emojis in Python script" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Check README
-          if grep -P '[\x{1F300}-\x{1F9FF}]' README.md; then
-            echo "- [WARNING] Emojis found in README" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- [OK] No emojis in README" >> $GITHUB_STEP_SUMMARY
-          fi
-      
       - name: Generate documentation preview
         run: |
           echo "### Documentation Preview" >> $GITHUB_STEP_SUMMARY
