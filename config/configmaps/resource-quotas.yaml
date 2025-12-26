@@ -1,0 +1,77 @@
+---
+# Resource Quota for grafana-system namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: grafana-system-quota
+  namespace: grafana-system
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+    services.nodeports: "5"
+---
+# LimitRange for grafana-system namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: grafana-system-limits
+  namespace: grafana-system
+spec:
+  limits:
+    - max:
+        cpu: "2"
+        memory: 4Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      type: Container
+    - max:
+        storage: 50Gi
+      min:
+        storage: 1Gi
+      type: PersistentVolumeClaim
+---
+# Resource Quota for grafana-operator namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: operator-quota
+  namespace: grafana-operator
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 2Gi
+---
+# LimitRange for grafana-operator namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: operator-limits
+  namespace: grafana-operator
+spec:
+  limits:
+    - max:
+        cpu: "1"
+        memory: 1Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      type: Container

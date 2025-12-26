@@ -1,0 +1,92 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-config
+  namespace: grafana-system
+  labels:
+    grafana_dashboard: "1"
+data:
+  kubernetes-cluster.json: |
+    {
+      "dashboard": {
+        "title": "Kubernetes Cluster Monitoring",
+        "tags": ["kubernetes", "cluster"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Cluster CPU Usage",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total[5m]))",
+                "legendFormat": "CPU Usage"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  
+  grafana-operator-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Grafana Operator Metrics",
+        "tags": ["grafana", "operator"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Operator Reconciliation Rate",
+            "targets": [
+              {
+                "expr": "rate(controller_runtime_reconcile_total[5m])",
+                "legendFormat": "{{controller}}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-plugins
+  namespace: grafana-system
+data:
+  plugins.txt: |
+    grafana-clock-panel
+    grafana-simple-json-datasource
+    grafana-piechart-panel
+    grafana-worldmap-panel
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: grafana-system
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: "30s"
+          httpMethod: "POST"
+  
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards

@@ -1,0 +1,152 @@
+---
+# Note: This configuration assumes Istio is already installed in the cluster
+# Install Istio first: istioctl install --set profile=default -y
+# Enable Istio injection: kubectl label namespace grafana-system istio-injection=enabled
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: grafana-gateway
+  namespace: grafana-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "grafana.local"
+        - "*"
+      tls:
+        httpsRedirect: false
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "grafana.local"
+        - "*"
+      tls:
+        mode: SIMPLE
+        credentialName: grafana-tls-secret
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana-virtualservice
+  namespace: grafana-system
+spec:
+  hosts:
+    - "grafana.local"
+    - "*"
+  gateways:
+    - grafana-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: grafana-instance-service.grafana-system.svc.cluster.local
+            port:
+              number: 3000
+      timeout: 300s
+      retries:
+        attempts: 3
+        perTryTimeout: 30s
+        retryOn: 5xx,reset,connect-failure,refused-stream
+      corsPolicy:
+        allowOrigins:
+          - exact: "https://grafana.local"
+        allowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        allowHeaders:
+          - authorization
+          - content-type
+          - x-grafana-org-id
+        maxAge: 24h
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: grafana-destination
+  namespace: grafana-system
+spec:
+  host: grafana-instance-service.grafana-system.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+    loadBalancer:
+      simple: LEAST_REQUEST
+      localityLbSetting:
+        enabled: true
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 40
+---
+# Self-signed certificate secret for testing (replace with real cert in production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-tls-secret
+  namespace: istio-system
+type: kubernetes.io/tls
+stringData:
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDXTCCAkWgAwIBAgIJAKJ5qVQqF7YFMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+    BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
+    aWRnaXRzIFB0eSBMdGQwHhcNMjMwMTAxMDAwMDAwWhcNMjQwMTAxMDAwMDAwWjBF
+    MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
+    ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
+    CgKCAQEAwBGHKqG4qJg0Ju8vzYqNqLp4huJqvQlHn7yR1xNvTVCKm3H9WvKJZ9Y8
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDAEYcqobiomDQm
+    7y/Nio2ouniG4mq9CUefvJHXE29NUIqbcf1a8oln1jw=
+    -----END PRIVATE KEY-----
+---
+# PeerAuthentication to enforce mTLS within the mesh
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: grafana-mtls
+  namespace: grafana-system
+spec:
+  mtls:
+    mode: PERMISSIVE
+---
+# Authorization Policy for Grafana
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: grafana-authz
+  namespace: grafana-system
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system", "grafana-system", "monitoring"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+            paths: ["/*"]

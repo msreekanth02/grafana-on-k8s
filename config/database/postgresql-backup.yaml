@@ -1,0 +1,275 @@
+---
+# PVC for storing database backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-backup-pvc
+  namespace: grafana-system
+  labels:
+    app: postgresql
+    component: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi
+---
+# ConfigMap with backup scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-backup-scripts
+  namespace: grafana-system
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -e
+    
+    BACKUP_DIR="/backups"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="${BACKUP_DIR}/grafana_backup_${TIMESTAMP}.sql.gz"
+    RETENTION_DAYS=7
+    
+    echo "$(date): Starting PostgreSQL backup..."
+    
+    # Create backup directory if it doesn't exist
+    mkdir -p ${BACKUP_DIR}
+    
+    # Perform backup
+    PGPASSWORD=${POSTGRES_PASSWORD} pg_dump \
+      -h postgresql.grafana-system.svc.cluster.local \
+      -U ${POSTGRES_USER} \
+      -d ${POSTGRES_DB} \
+      | gzip > ${BACKUP_FILE}
+    
+    if [ $? -eq 0 ]; then
+      echo "$(date): Backup completed successfully: ${BACKUP_FILE}"
+      echo "$(date): Backup size: $(du -h ${BACKUP_FILE} | cut -f1)"
+    else
+      echo "$(date): Backup failed!"
+      exit 1
+    fi
+    
+    # Remove old backups (keep last N days)
+    echo "$(date): Removing backups older than ${RETENTION_DAYS} days..."
+    find ${BACKUP_DIR} -name "grafana_backup_*.sql.gz" -type f -mtime +${RETENTION_DAYS} -delete
+    
+    # List current backups
+    echo "$(date): Current backups:"
+    ls -lh ${BACKUP_DIR}/grafana_backup_*.sql.gz 2>/dev/null || echo "No backups found"
+    
+    echo "$(date): Backup process completed"
+  
+  restore.sh: |
+    #!/bin/bash
+    set -e
+    
+    BACKUP_DIR="/backups"
+    
+    if [ -z "$1" ]; then
+      echo "Usage: $0 <backup_file>"
+      echo "Available backups:"
+      ls -lh ${BACKUP_DIR}/grafana_backup_*.sql.gz 2>/dev/null || echo "No backups found"
+      exit 1
+    fi
+    
+    BACKUP_FILE="${BACKUP_DIR}/$1"
+    
+    if [ ! -f "${BACKUP_FILE}" ]; then
+      echo "Error: Backup file not found: ${BACKUP_FILE}"
+      exit 1
+    fi
+    
+    echo "$(date): Starting PostgreSQL restore from ${BACKUP_FILE}..."
+    
+    # Terminate all active connections to the database with retry logic
+    echo "$(date): Terminating active database connections..."
+    MAX_RETRIES=5
+    RETRY_COUNT=0
+    
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+      echo "$(date): Attempt $((RETRY_COUNT + 1)) to terminate connections..."
+      
+      # Terminate all connections
+      PGPASSWORD=${POSTGRES_PASSWORD} psql \
+        -h postgresql.grafana-system.svc.cluster.local \
+        -U ${POSTGRES_USER} \
+        -d postgres \
+        -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${POSTGRES_DB}' AND pid <> pg_backend_pid();"
+      
+      # Check if any connections remain
+      CONNECTION_COUNT=$(PGPASSWORD=${POSTGRES_PASSWORD} psql \
+        -h postgresql.grafana-system.svc.cluster.local \
+        -U ${POSTGRES_USER} \
+        -d postgres \
+        -t -c "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = '${POSTGRES_DB}' AND pid <> pg_backend_pid();")
+      
+      CONNECTION_COUNT=$(echo $CONNECTION_COUNT | xargs)  # Trim whitespace
+      
+      if [ "$CONNECTION_COUNT" -eq "0" ]; then
+        echo "$(date): All connections terminated successfully"
+        break
+      fi
+      
+      echo "$(date): $CONNECTION_COUNT connections still active, waiting..."
+      RETRY_COUNT=$((RETRY_COUNT + 1))
+      sleep 2
+    done
+    
+    if [ "$CONNECTION_COUNT" -ne "0" ]; then
+      echo "$(date): ERROR - Unable to terminate all connections after $MAX_RETRIES attempts"
+      exit 1
+    fi
+    
+    # Drop and recreate database (WARNING: This deletes all current data!)
+    echo "$(date): Dropping existing database..."
+    PGPASSWORD=${POSTGRES_PASSWORD} psql \
+      -h postgresql.grafana-system.svc.cluster.local \
+      -U ${POSTGRES_USER} \
+      -d postgres \
+      -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
+    
+    echo "$(date): Creating new database..."
+    PGPASSWORD=${POSTGRES_PASSWORD} psql \
+      -h postgresql.grafana-system.svc.cluster.local \
+      -U ${POSTGRES_USER} \
+      -d postgres \
+      -c "CREATE DATABASE ${POSTGRES_DB};"
+    
+    # Restore from backup
+    echo "$(date): Restoring data..."
+    gunzip -c ${BACKUP_FILE} | PGPASSWORD=${POSTGRES_PASSWORD} psql \
+      -h postgresql.grafana-system.svc.cluster.local \
+      -U ${POSTGRES_USER} \
+      -d ${POSTGRES_DB}
+    
+    if [ $? -eq 0 ]; then
+      echo "$(date): Restore completed successfully!"
+    else
+      echo "$(date): Restore failed!"
+      exit 1
+    fi
+---
+# CronJob for automated daily backups (runs at 2 AM daily)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-backup
+  namespace: grafana-system
+  labels:
+    app: postgresql
+    component: backup
+spec:
+  schedule: "0 2 * * *"  # Run at 2 AM every day
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: postgresql-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              command: ["/bin/bash", "/scripts/backup.sh"]
+              env:
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-secret
+                      key: POSTGRES_DB
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-secret
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-secret
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+                - name: backup-scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: postgresql-backup-pvc
+            - name: backup-scripts
+              configMap:
+                name: postgresql-backup-scripts
+                defaultMode: 0755
+---
+# Job for manual backup (can be triggered anytime)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgresql-backup-manual
+  namespace: grafana-system
+  labels:
+    app: postgresql
+    component: backup
+    backup-type: manual
+spec:
+  template:
+    metadata:
+      labels:
+        app: postgresql-backup
+        backup-type: manual
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backup
+          image: postgres:16-alpine
+          command: ["/bin/bash", "/scripts/backup.sh"]
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: backup-scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: backup-storage
+          persistentVolumeClaim:
+            claimName: postgresql-backup-pvc
+        - name: backup-scripts
+          configMap:
+            name: postgresql-backup-scripts
+            defaultMode: 0755

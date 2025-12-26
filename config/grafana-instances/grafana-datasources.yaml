@@ -1,0 +1,45 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: prometheus-datasource
+  namespace: grafana-system
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  datasource:
+    name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    isDefault: true
+    jsonData:
+      tlsSkipVerify: true
+      timeInterval: "30s"
+      httpMethod: "POST"
+    editable: true
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgresql-datasource
+  namespace: grafana-system
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  datasource:
+    name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgresql.grafana-system.svc.cluster.local:5432
+    database: grafana
+    user: grafana
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: "GrafanaDB@12345"
+    editable: true

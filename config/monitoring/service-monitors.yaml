@@ -1,0 +1,129 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    monitoring: enabled
+---
+# ServiceMonitor for Grafana Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grafana-operator
+  namespace: grafana-operator
+  labels:
+    app: grafana-operator
+spec:
+  selector:
+    matchLabels:
+      app: grafana-operator
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+---
+# ServiceMonitor for Grafana Instance
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grafana-instance
+  namespace: grafana-system
+  labels:
+    app: grafana
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+      scheme: http
+---
+# ServiceMonitor for PostgreSQL
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgresql
+  namespace: grafana-system
+  labels:
+    app: postgresql
+spec:
+  selector:
+    matchLabels:
+      app: postgresql
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+---
+# PrometheusRule for Grafana Alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: grafana-alerts
+  namespace: grafana-system
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: grafana
+      interval: 30s
+      rules:
+        - alert: GrafanaDown
+          expr: up{job="grafana-instance"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Grafana instance is down"
+            description: "Grafana instance {{ $labels.instance }} has been down for more than 5 minutes"
+        
+        - alert: GrafanaHighMemory
+          expr: container_memory_usage_bytes{pod=~"grafana-.*"} / container_spec_memory_limit_bytes{pod=~"grafana-.*"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Grafana high memory usage"
+            description: "Grafana pod {{ $labels.pod }} is using more than 90% of its memory limit"
+        
+        - alert: GrafanaHighCPU
+          expr: rate(container_cpu_usage_seconds_total{pod=~"grafana-.*"}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Grafana high CPU usage"
+            description: "Grafana pod {{ $labels.pod }} is using more than 80% CPU"
+        
+        - alert: PostgreSQLDown
+          expr: up{job="postgresql"} == 0
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PostgreSQL is down"
+            description: "PostgreSQL instance has been down for more than 3 minutes"
+        
+        - alert: PostgreSQLHighConnections
+          expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PostgreSQL high connection usage"
+            description: "PostgreSQL is using more than 80% of max connections"
+        
+        - alert: GrafanaOperatorDown
+          expr: up{job="grafana-operator-metrics"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Grafana Operator is down"
+            description: "Grafana Operator has been down for more than 5 minutes"

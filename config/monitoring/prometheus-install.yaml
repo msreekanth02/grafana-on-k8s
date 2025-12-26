@@ -1,0 +1,46 @@
+---
+# Install Prometheus Operator using kube-prometheus-stack
+# This file documents the Helm command to install Prometheus
+# 
+# Prerequisites:
+# 1. Add Prometheus Community Helm repo:
+#    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#    helm repo update
+#
+# 2. Install kube-prometheus-stack:
+#    helm install prometheus prometheus-community/kube-prometheus-stack \
+#      --namespace monitoring --create-namespace \
+#      --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+#      --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+#      --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false \
+#      --set prometheus.prometheusSpec.retention=30d \
+#      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=local-path \
+#      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi \
+#      --set grafana.enabled=false
+
+# Alternative: Using manifest-based installation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-install-commands
+  namespace: monitoring
+data:
+  install.sh: |
+    #!/bin/bash
+    # Add Helm repository
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+    
+    # Install kube-prometheus-stack
+    helm install prometheus prometheus-community/kube-prometheus-stack \
+      --namespace monitoring --create-namespace \
+      --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+      --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+      --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false \
+      --set prometheus.prometheusSpec.retention=30d \
+      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=local-path \
+      --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi \
+      --set grafana.enabled=false \
+      --wait --timeout=10m
+    
+    echo "Prometheus installed successfully!"

@@ -1,0 +1,78 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin-credentials
+  namespace: grafana-system
+type: Opaque
+stringData:
+  GF_SECURITY_ADMIN_USER: admin
+  GF_SECURITY_ADMIN_PASSWORD: Admin@12345
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana-instance
+  namespace: grafana-system
+  labels:
+    app: grafana
+    dashboards: "grafana"
+spec:
+  config:
+    server:
+      root_url: "http://localhost:3030"
+      http_port: "3000"
+    
+    database:
+      type: "postgres"
+      host: "postgresql.grafana-system.svc.cluster.local:5432"
+      name: "grafana"
+      user: "grafana"
+      password: "GrafanaDB@12345"
+      ssl_mode: "disable"
+    
+    security:
+      admin_user: "${GF_SECURITY_ADMIN_USER}"
+      admin_password: "${GF_SECURITY_ADMIN_PASSWORD}"
+      secret_key: "SW2YcwTIb9zpOOhoPsMm"
+    
+    auth:
+      disable_login_form: "false"
+    
+    auth.anonymous:
+      enabled: "false"
+    
+    log:
+      mode: "console"
+      level: "info"
+  
+  deployment:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      replicas: 2
+      template:
+        spec:
+          containers:
+            - name: grafana
+              env:
+                - name: GF_SECURITY_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: GF_SECURITY_ADMIN_USER
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: GF_SECURITY_ADMIN_PASSWORD
+  
+  persistentVolumeClaim:
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 10Gi
