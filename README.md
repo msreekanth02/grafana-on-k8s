@@ -1,5 +1,11 @@
 # Grafana Operator on Kubernetes (Kind Cluster)
 
+![GitHub stars](https://img.shields.io/github/stars/msreekanth02/grafana-on-k8s?style=social)
+![GitHub forks](https://img.shields.io/github/forks/msreekanth02/grafana-on-k8s?style=social)
+![GitHub watchers](https://img.shields.io/github/watchers/msreekanth02/grafana-on-k8s?style=social)
+![GitHub issues](https://img.shields.io/github/issues/msreekanth02/grafana-on-k8s)
+![Demo Status](https://github.com/msreekanth02/grafana-on-k8s/actions/workflows/demo-execution.yml/badge.svg)
+
 A production-ready, automated deployment of Grafana Operator on a Kubernetes in Docker (Kind) cluster with comprehensive management capabilities.
 
 ## Main Menu

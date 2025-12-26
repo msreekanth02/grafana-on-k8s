@@ -1,0 +1,182 @@
+name: Demo Program Execution
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  validate-structure:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Validate repository structure
+        run: |
+          echo "### Repository Structure Validation" >> $GITHUB_STEP_SUMMARY
+          
+          # Check critical files
+          CRITICAL_FILES=(
+            "README.md"
+            "requirements.txt"
+            "grafana"
+            "scripts/grafana-manager.py"
+            "config/kind-config.yaml"
+            "config/grafana-operator/namespace.yaml"
+            "config/grafana-instances/namespace.yaml"
+            "config/database/postgresql.yaml"
+            "config/database/postgresql-backup.yaml"
+          )
+          
+          ALL_PRESENT=true
+          for file in "${CRITICAL_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo "- [OK] $file" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- [ERROR] $file missing" >> $GITHUB_STEP_SUMMARY
+              ALL_PRESENT=false
+            fi
+          done
+          
+          if [ "$ALL_PRESENT" = true ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All critical files present!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Some critical files are missing!" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+  python-syntax-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Check Python syntax
+        run: |
+          echo "### Python Syntax Validation" >> $GITHUB_STEP_SUMMARY
+          python -m py_compile scripts/grafana-manager.py
+          echo "- [OK] scripts/grafana-manager.py has valid syntax" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Test imports
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, 'scripts')
+          
+          # Test that all imports work
+          try:
+              from kubernetes import client, config
+              from rich.console import Console
+              from rich.table import Table
+              import docker
+              print('[OK] All imports successful')
+          except ImportError as e:
+              print(f'[ERROR] Import failed: {e}')
+              sys.exit(1)
+          "
+
+  demonstrate-tool:
+    runs-on: ubuntu-latest
+    needs: [validate-structure, python-syntax-check]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Display tool capabilities
+        run: |
+          echo "### Grafana Operator Management Tool Features" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Main Menu Options:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Cluster Management" >> $GITHUB_STEP_SUMMARY
+          echo "2. Operator Management" >> $GITHUB_STEP_SUMMARY
+          echo "3. Grafana Instance Management" >> $GITHUB_STEP_SUMMARY
+          echo "4. Database Backup & Restore" >> $GITHUB_STEP_SUMMARY
+          echo "5. Monitoring & Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "6. System Health Check" >> $GITHUB_STEP_SUMMARY
+          echo "7. Diagnostics & Logs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Configuration Files:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          find config -name "*.yaml" | head -10 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check for emojis
+        run: |
+          echo "### Emoji Check" >> $GITHUB_STEP_SUMMARY
+          
+          # Check Python file
+          if grep -P '[\x{1F300}-\x{1F9FF}]' scripts/grafana-manager.py; then
+            echo "- [WARNING] Emojis found in Python script" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- [OK] No emojis in Python script" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check README
+          if grep -P '[\x{1F300}-\x{1F9FF}]' README.md; then
+            echo "- [WARNING] Emojis found in README" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- [OK] No emojis in README" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Generate documentation preview
+        run: |
+          echo "### Documentation Preview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Quick Start:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Setup" >> $GITHUB_STEP_SUMMARY
+          echo "python3 -m venv venv" >> $GITHUB_STEP_SUMMARY
+          echo "source venv/bin/activate" >> $GITHUB_STEP_SUMMARY
+          echo "pip install -r requirements.txt" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Run" >> $GITHUB_STEP_SUMMARY
+          echo "./grafana" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Check dependencies for vulnerabilities
+        run: |
+          echo "### Security Scan" >> $GITHUB_STEP_SUMMARY
+          safety check --file requirements.txt --output text || echo "- [INFO] Some vulnerabilities found, review recommended" >> $GITHUB_STEP_SUMMARY

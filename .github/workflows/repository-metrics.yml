@@ -1,0 +1,70 @@
+name: Repository Metrics
+
+on:
+  schedule:
+    # Run every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  track-metrics:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Get repository metrics
+        id: metrics
+        run: |
+          # Get repository information using GitHub API
+          REPO_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}")
+          
+          STARS=$(echo $REPO_INFO | jq -r '.stargazers_count')
+          FORKS=$(echo $REPO_INFO | jq -r '.forks_count')
+          WATCHERS=$(echo $REPO_INFO | jq -r '.subscribers_count')
+          OPEN_ISSUES=$(echo $REPO_INFO | jq -r '.open_issues_count')
+          
+          echo "stars=$STARS" >> $GITHUB_OUTPUT
+          echo "forks=$FORKS" >> $GITHUB_OUTPUT
+          echo "watchers=$WATCHERS" >> $GITHUB_OUTPUT
+          echo "issues=$OPEN_ISSUES" >> $GITHUB_OUTPUT
+          
+          echo "### Repository Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- Stars: $STARS" >> $GITHUB_STEP_SUMMARY
+          echo "- Forks: $FORKS" >> $GITHUB_STEP_SUMMARY
+          echo "- Watchers: $WATCHERS" >> $GITHUB_STEP_SUMMARY
+          echo "- Open Issues: $OPEN_ISSUES" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Get recent activity
+        run: |
+          echo "### Recent Repository Activity" >> $GITHUB_STEP_SUMMARY
+          
+          # Get recent stargazers
+          RECENT_STARS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/stargazers?per_page=5" \
+            -H "Accept: application/vnd.github.v3.star+json" | jq -r '.[] | "- \(.user.login) starred on \(.starred_at)"')
+          
+          if [ -n "$RECENT_STARS" ]; then
+            echo "#### Recent Stars:" >> $GITHUB_STEP_SUMMARY
+            echo "$RECENT_STARS" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Get recent forks
+          RECENT_FORKS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/forks?per_page=5&sort=newest" \
+            | jq -r '.[] | "- \(.owner.login) forked on \(.created_at)"')
+          
+          if [ -n "$RECENT_FORKS" ]; then
+            echo "#### Recent Forks:" >> $GITHUB_STEP_SUMMARY
+            echo "$RECENT_FORKS" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Create metrics badge
+        run: |
+          mkdir -p .github/badges
+          echo "![Stars](https://img.shields.io/github/stars/${{ github.repository }}?style=social)" > .github/badges/metrics.md
+          echo "![Forks](https://img.shields.io/github/forks/${{ github.repository }}?style=social)" >> .github/badges/metrics.md
+          echo "![Watchers](https://img.shields.io/github/watchers/${{ github.repository }}?style=social)" >> .github/badges/metrics.md
+          echo "![Issues](https://img.shields.io/github/issues/${{ github.repository }})" >> .github/badges/metrics.md

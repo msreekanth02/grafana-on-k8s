@@ -1,0 +1,61 @@
+name: Welcome Contributors
+
+on:
+  fork:
+  star:
+  watch:
+    types: [started]
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Track fork event
+        if: github.event_name == 'fork'
+        run: |
+          echo "### New Fork Detected!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "User: ${{ github.event.forkee.owner.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "Fork URL: ${{ github.event.forkee.html_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "Forked at: ${{ github.event.forkee.created_at }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Track watch event
+        if: github.event_name == 'watch'
+        run: |
+          echo "### New Watcher!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "User: ${{ github.event.sender.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "Action: ${{ github.event.action }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Welcome first-time contributor
+        if: github.event_name == 'pull_request' || github.event_name == 'issues'
+        uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            Thank you for opening your first issue! 
+            
+            We appreciate your contribution to the Grafana Operator on Kind project.
+            
+            Please make sure you've:
+            - Read the README.md
+            - Checked existing issues
+            - Provided all necessary details
+            
+            A maintainer will respond soon!
+          pr-message: |
+            Thank you for your first pull request!
+            
+            We appreciate your contribution to the Grafana Operator on Kind project.
+            
+            Please ensure:
+            - Tests pass
+            - Code follows the project style
+            - Documentation is updated if needed
+            
+            A maintainer will review your PR soon!
