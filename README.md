@@ -9,14 +9,14 @@ A production-ready, automated deployment of Grafana Operator on a Kubernetes in 
 │                     Main Menu                          │
 ├────────────────────────────────────────────────────────┤
 │                                                        │
-│ 1. Cluster Management                                 │
-│ 2. Operator Management                                │
-│ 3. Grafana Instance Management                        │
-│ 4. Database Backup & Restore                          │
-│ 5. Monitoring & Infrastructure                        │
-│ 6. System Health Check                                │
-│ 7. Diagnostics & Logs                                 │
-│ 0. Exit                                               │
+│ 1. Cluster Management                                  │
+│ 2. Operator Management                                 │
+│ 3. Grafana Instance Management                         │
+│ 4. Database Backup & Restore                           │
+│ 5. Monitoring & Infrastructure                         │
+│ 6. System Health Check                                 │
+│ 7. Diagnostics & Logs                                  │
+│ 0. Exit                                                │
 │                                                        │
 └────────────────────────────────────────────────────────┘
 ```
